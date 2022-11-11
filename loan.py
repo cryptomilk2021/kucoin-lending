@@ -10,6 +10,16 @@ import json
 import csv
 from requests.exceptions import HTTPError
 from datetime import datetime
+import math
+
+def write_to_log(*data):
+    if data:
+        dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        with open("trans_log.txt", "a") as myfile:
+            myfile.write(f'[{dt_string}] {data[0]}\n')
+    else:
+        with open("trans_log.txt", "a") as myfile:
+            myfile.write('\n')
 
 
 class Loan:
@@ -39,24 +49,19 @@ class Loan:
         self.url = 'https://api.kucoin.com'  #
         self.start_log()
 
-
     def start_log(self):
-        now = datetime.now()
-        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-        with open("trans_log.txt", "a") as myfile:
-            myfile.write(f'\n[{dt_string}]----------Created {self.coin} instance----------\n')
+        write_to_log()
+        write_to_log(f'----------Created {self.coin} instance, deleting orders older than {self.delete_orders_older_than_hours} hours----------')
 
     def get_lending_rates(self):
         point = f'/api/v1/margin/market?currency={self.coin}&term=7'
         call_type = 'GET'
         response = self.call_kucoin(point, call_type)
         self.current_lending_rates = pd.DataFrame(response['data'])
-        self.current_lending_rates.to_csv(f'{self.coin}_current_lending_rates.csv')
-        if len(self.current_lending_rates) == 0:    #no lending rates available
-            with open("trans_log.txt", "a") as myfile:
-                now = datetime.now()
-                dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-                myfile.write(f'[{dt_string}] Cannot lend {self.coin} no lending rates available\n')
+        # self.current_lending_rates.to_csv(f'{self.coin}_current_lending_rates.csv')
+        if len(self.current_lending_rates) == 0:  # no lending rates available
+            write_to_log(f'Cannot lend {self.coin} no lending rates available, adding to unlendable.csv')
+
             with open("unlendable.csv", "a") as myfile:
                 myfile.write(f'{self.coin}\n')
             return False
@@ -69,15 +74,12 @@ class Loan:
         response = self.call_kucoin(point, call_type)
         self.account_balance = pd.DataFrame(response['data'])
         self.account_balance = self.account_balance.loc[self.account_balance['type'] == 'main']
-        self.account_balance.to_csv(f'{self.coin}_account_balance_data.csv')
-        with open("trans_log.txt", "a") as myfile:
-            now = datetime.now()
-            dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-            myfile.write(f'[{dt_string}] {round(float(self.account_balance["available"]), 2)} {self.coin} available for lending\n')
+        # self.account_balance.to_csv(f'{self.coin}_account_balance_data.csv')
+        write_to_log(f'{round(float(self.account_balance["available"]), 2)} {self.coin} available for lending, lend precision {self.precision}')
         return float(self.account_balance['available'])
 
     def lend_coin(self):
-        def truncate_amount(amount, precision):
+        def truncate_amount(amount, precision):  # needs to process min lend amount from .json
             amount = str(amount)
             precision = str(precision)
             if precision.find('.') == -1:
@@ -90,9 +92,10 @@ class Loan:
                 amount_split = amount.replace('.', ' ').split()
                 decimals = amount_split[1]
                 if len(decimals) < int(precision):  # buffer out with 0's if too short
-                    for i in range(len(decimals), precision):
+                    for i in range(len(decimals), precision):  # use '.5f') for formating
                         amount = amount + '0'
             return amount
+
         if self.get_lending_rates():
             coins_available = self.get_available_balance()
             decimal_accuracy = self.precision
@@ -101,7 +104,7 @@ class Loan:
             else:
                 last_USDT_price = self.get_last_price()
             USDT_funds_available = coins_available * last_USDT_price
-
+            # add proper splitting
             if USDT_funds_available > self.min_USDT_amount:
                 if (USDT_funds_available / 3) > self.min_USDT_amount:
                     nbr_of_lend_orders = 3
@@ -126,44 +129,29 @@ class Loan:
                     # print(type(lend_amount))
                     if lend_amount > 0:
                         order_nbr = self.place_order(lend_amount, lend_interest_rate_daily)
-                        now = datetime.now()
-                        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
                         if order_nbr.json()['code'] == '400100':
-                            with open("trans_log.txt", "a") as myfile:
-                                myfile.write(
-                                    f'[{dt_string}] Failed Lending {lend_amount}{self.coin}, coin precision was unknown, recorded in lend_precision.csv for future use\n')
-                                myfile.write(order_nbr.json()['code'])
-                                myfile.write('\n')
-                                myfile.write(order_nbr.json()['data'])
-                                myfile.write('\n')
-                                return
-                        a = order_nbr.json()['data']
-                        a = a['orderId']
-                        with open("trans_log.txt", "a") as myfile:
-                            myfile.write(
-                                f'[{dt_string}] Lending {lend_amount}{self.coin}, @ {lend_interest_rate_daily}% daily, 7 days, order {a}\n')
+                            write_to_log(f'Failed Lending {lend_amount} {self.coin}, coin precision was unknown, recorded in min_lend_amount.json for future use')
+                            write_to_log(order_nbr.json()['code'])
+                            write_to_log(order_nbr.json()['msg'])
+                            pass
+                        if 'data' in order_nbr.json():
+                            a = order_nbr.json()['data']
+                            a = a['orderId']
+                            apr = float(lend_interest_rate_daily) * 365 * 100
+                            write_to_log(f'Lending {lend_amount} {self.coin}, @ {lend_interest_rate_daily}% daily ({round(apr, 2)}%APR), 7 days, order {a}')
                     else:
-                        #need function to get optimal amounts to lend ie. if /3 is == 0.00 but still over USDT10
-                        now = datetime.now()
-                        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-                        with open("trans_log.txt", "a") as myfile:
-                            myfile.write(
-                                f'[{dt_string}] Cannot lending {self.coin}, amount > USDT10 but after conversion {lend_amount} {self.coin}\n')
+                        write_to_log(f'Cannot lend {self.coin}, amount > USDT10 but after conversion {lend_amount} {self.coin}')
             else:
-                now = datetime.now()
-                dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-                with open("trans_log.txt", "a") as myfile:
-                    myfile.write(
-                        f'[{dt_string}] unable to lend, only {round(USDT_funds_available, 2)} USDT available \n')
+                write_to_log(f'unable to lend, only {round(USDT_funds_available, 2)} USDT available')
 
     def get_last_price(self):
         point = '/api/v1/market/orderbook/level1?symbol=' + self.coin + '-USDT'
         call_type = 'GET'
         response = self.call_kucoin(point, call_type)
         self.last_price = response['data']['price']
-        f = open(f'{self.coin}_last_price.csv', 'w')
-        f.write(self.last_price)
-        f.close()
+        # f = open(f'{self.coin}_last_price.csv', 'w')
+        # f.write(self.last_price)
+        # f.close()
         return float(self.last_price)
 
     def cancel_old_orders(self):
@@ -179,11 +167,7 @@ class Loan:
             if created < compare_date:
                 point = '/api/v1/margin/lend/' + dict_order["orderId"]
                 response = self.call_kucoin(point, call_type)
-                now = datetime.now()
-                dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-                with open("trans_log.txt", "a") as myfile:
-                    myfile.write(
-                        f'[{dt_string}] deleted order {dict_order["orderId"]}\n')
+                write_to_log(f'deleted order {dict_order["orderId"]}')
 
     def process_open_orders(self):
         point = '/api/v1/margin/lend/active?currency=' + self.coin + '&currentPage=1&pageSize=50'
@@ -253,48 +237,66 @@ class Loan:
             "Content-Type": "application/json"  # specifying content type or using json=data in request
         }
         response = requests.request('post', self.url + point, headers=headers, data=data_json)
-        print(response)
-        print(response.json())
-        if response.json()['code'] == '400100':  # add coin to precision file
-            new_precision = response.json()['msg'].split()[-1]
-            ##todo convert to int for precision
-            with open("lend_precision.csv", "a") as myfile:
-                myfile.write(f'{self.coin}, {new_precision}\n')
-            self.get_currency_precision()
+        # print(response)
+        # print(response.json())
+        if response.json()['code'] == '400100':  # add coin to precision file, check if not another error
+            err_msg = response.json()['msg'].split()
+            if (err_msg[0] + err_msg[1]) == 'lendsize':
+                # print('lend size error')
+                self.precision = err_msg[5]
+            else:
+                # print('found new precision')
+                self.precision = response.json()['msg'].split()[-1]
+
+            f = open('min_lend_amount.json')
+            dict_lend = json.load(f)
+            f.close()
+            dict_lend[self.coin] = self.precision
+            with open('min_lend_amount.json', 'w') as convert_file:
+                convert_file.write(json.dumps(dict_lend))
+            write_to_log(f'min_lend_amount.json updated with new entry {self.coin} precision {self.precision}')
+
         return response
 
     def get_currency_precision(self):
-        if not os.path.isfile('lend_precision.csv'):
+        print(f'getting curr precision {self.coin}')
+        if not os.path.isfile('min_lend_amount.json'):
             self.precision = 0.1
-            now = datetime.now()
-            dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-            with open("trans_log.txt", "a") as myfile:
-                myfile.write(f'[{dt_string}] lend_precision.csv does not exist, will be created as need be\n')
+            dict_lend = {self.coin: self.precision}
+            with open('min_lend_amount.json', 'w') as convert_file:
+                convert_file.write(json.dumps(dict_lend))
+            write_to_log(f'min_lend_amount.json does not exist, defaulting to precision of 0.1')
         else:
-            dict_lend = {}
-            with open("lend_precision.csv", 'r') as data:
-                for line in csv.reader(data):
-                    dict_lend[line[0]] = line[1]
+            f = open('min_lend_amount.json')
+            dict_lend = json.load(f)
+            f.close()
+            print(dict_lend)
+            if self.coin in dict_lend:
+                self.precision = dict_lend[self.coin]
+            else:
+                self.precision = 0.1  # will get overwritten later if wrong
+                dict_lend[self.coin] = self.precision
+                with open('min_lend_amount.json', 'w') as convert_file:
+                    convert_file.write(json.dumps(dict_lend))
+                write_to_log(f'adding {self.coin} to min_lend_amount.json with default precision of 0.1')
+        # print(f'precision = {self.precision}')
 
-            self.precision = dict_lend.get(self.coin, 0.1)
 
-    def format_amount(self, amount, precision):
-        amount = str(amount)
-        precision = str(precision)
-        if precision.find('.') == -1:
-            precision = 1
+    def format_amount(self, amount, decimal_places):
+        def truncate(amt, dec_places):
+            return math.floor(amt * 10 ** dec_places) / 10 ** dec_places
+
+        decimal_places = str(decimal_places)
+        chopping = decimal_places.find('.')
+        if chopping == -1:
+            # precision = 1
             amount = int(float(amount))
         else:
-            precision = len(precision.replace('.', ' ').split()[-1])
-            found_at = amount.find('.')
-            amount = amount[0:(found_at + 1 + precision)]
-            amount_split = amount.replace('.', ' ').split()
-            decimals = amount_split[1]
+            decimal_places = len(decimal_places.replace('.', ' ').split()[-1])
+            amount = truncate(float(amount), decimal_places)
+        return amount
 
-            if len(decimals) < int(precision):  # buffer out with 0's if too short
-                for i in range(len(decimals), precision):
-                    amount = amount + '0'
-        return float(amount)
+
 
 def get_my_coins_list():
     exceptions_list = []
@@ -303,10 +305,7 @@ def get_my_coins_list():
             for row in myfile:
                 exceptions_list.append(row.rstrip('\n'))
     else:
-        with open("trans_log.txt", "a") as myfile:
-            now = datetime.now()
-            dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-            myfile.write(f'[{dt_string}] unlendable.csv does not exist, will be created as need be\n')
+        write_to_log(f'unlendable.csv did not exist, has been created for future use')
 
     api_name = os.environ.get("API_NAME")
     api_key = os.environ.get("API_KEY")
@@ -339,4 +338,3 @@ def get_my_coins_list():
             my_list.append(i['currency'])
     my_list = [i for i in my_list if i not in exceptions_list]
     return my_list
-
