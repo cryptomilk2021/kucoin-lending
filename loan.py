@@ -79,52 +79,36 @@ class Loan:
         return float(self.account_balance['available'])
 
     def lend_coin(self):
-        def truncate_amount(amount, precision):  # needs to process min lend amount from .json
-            amount = str(amount)
-            precision = str(precision)
-            if precision.find('.') == -1:
-                precision = 1
+        def truncate_amt(amount, precision):
+            decimal_places = str(precision)
+            chopping = decimal_places.find('.')
+            if chopping == -1:
                 amount = int(float(amount))
             else:
-                precision = len(precision.replace('.', ' ').split()[-1])
-                found_at = amount.find('.')
-                amount = amount[0:(found_at + 1 + precision)]
-                amount_split = amount.replace('.', ' ').split()
-                decimals = amount_split[1]
-                if len(decimals) < int(precision):  # buffer out with 0's if too short
-                    for i in range(len(decimals), precision):  # use '.5f') for formating
-                        amount = amount + '0'
+                decimal_places = len(decimal_places.replace('.', ' ').split()[-1])
+                amount = math.floor(float(amount) * 10 ** decimal_places) / 10 ** decimal_places
             return amount
+
+        def split_amount(amt, precision):
+            for i in range(3, 0, -1):
+                amount = amt / i
+                if amount >= float(precision):
+                    return [i, truncate_amt(amount, precision)]
+            return None
 
         if self.get_lending_rates():
             coins_available = self.get_available_balance()
-            decimal_accuracy = self.precision
-            if self.coin == 'USDT':
-                last_USDT_price = 1
-            else:
-                last_USDT_price = self.get_last_price()
-            USDT_funds_available = coins_available * last_USDT_price
-            # add proper splitting
-            if USDT_funds_available > self.min_USDT_amount:
-                if (USDT_funds_available / 3) > self.min_USDT_amount:
-                    nbr_of_lend_orders = 3
-                    lend_amount = USDT_funds_available / 3
-                elif (USDT_funds_available / 2) > self.min_USDT_amount:
-                    nbr_of_lend_orders = 2
-                    lend_amount = USDT_funds_available / 2
-                else:
-                    nbr_of_lend_orders = 1
-                    lend_amount = USDT_funds_available
-                lend_amount = lend_amount / last_USDT_price
+            split_amounts = split_amount(coins_available, self.precision)
 
-                for i in range(nbr_of_lend_orders):
+            if split_amounts is not None:
+                for i in range(split_amounts[0]):
                     lend_interest_rate_daily = self.current_lending_rates.iloc[0]['dailyIntRate']
 
                     lend_interest_rate_daily = format(float(lend_interest_rate_daily) + i * 0.00001, '.5f')
                     # lend_interest_rate_daily = format(lend_interest_rate_daily, '.5f')
 
                     # print(lend_amount)
-                    lend_amount = self.format_amount(lend_amount, self.precision)
+                    lend_amount = split_amounts[1]
                     # print(lend_amount)
                     # print(type(lend_amount))
                     if lend_amount > 0:
@@ -141,17 +125,14 @@ class Loan:
                             write_to_log(f'Lending {lend_amount} {self.coin}, @ {lend_interest_rate_daily}% daily ({round(apr, 2)}%APR), 7 days, order {a}')
                     else:
                         write_to_log(f'Cannot lend {self.coin}, amount > USDT10 but after conversion {lend_amount} {self.coin}')
-            else:
-                write_to_log(f'unable to lend, only {round(USDT_funds_available, 2)} USDT available')
+        # else:
+        #     write_to_log(f'unable to lend, only {round(USDT_funds_available, 2)} USDT available')
 
     def get_last_price(self):
         point = '/api/v1/market/orderbook/level1?symbol=' + self.coin + '-USDT'
         call_type = 'GET'
         response = self.call_kucoin(point, call_type)
         self.last_price = response['data']['price']
-        # f = open(f'{self.coin}_last_price.csv', 'w')
-        # f.write(self.last_price)
-        # f.close()
         return float(self.last_price)
 
     def cancel_old_orders(self):
@@ -161,8 +142,17 @@ class Loan:
         today = time.time()
         compare_date = (today - time_in_secs) * 1000
 
+        self.get_lending_rates() # happens twice, clean it up
+        lend_interest_rate_daily = self.current_lending_rates.iloc[0]['dailyIntRate']
+        lowest_rate = format(float(lend_interest_rate_daily), '.5f')
         for index in range(len(df)):
             dict_order = df['items'].loc[index]
+            # print(dict_order['dailyIntRate'], lowest_rate) ####
+            #if order on top of queue, leave it
+            if dict_order['dailyIntRate'] == lowest_rate:
+                # print(f'skipping this one')
+                write_to_log(f'not deleting {dict_order["orderId"]}, currently at lowest available rate {lowest_rate}% daily')
+                continue
             created = float(dict_order['createdAt'])
             if created < compare_date:
                 point = '/api/v1/margin/lend/' + dict_order["orderId"]
@@ -259,7 +249,7 @@ class Loan:
         return response
 
     def get_currency_precision(self):
-        print(f'getting curr precision {self.coin}')
+        # print(f'getting curr precision {self.coin}')
         if not os.path.isfile('min_lend_amount.json'):
             self.precision = 0.1
             dict_lend = {self.coin: self.precision}
@@ -270,7 +260,7 @@ class Loan:
             f = open('min_lend_amount.json')
             dict_lend = json.load(f)
             f.close()
-            print(dict_lend)
+            # print(dict_lend)
             if self.coin in dict_lend:
                 self.precision = dict_lend[self.coin]
             else:
@@ -297,7 +287,6 @@ class Loan:
         return amount
 
 
-
 def get_my_coins_list():
     exceptions_list = []
     if os.path.isfile('unlendable.csv'):
@@ -305,7 +294,7 @@ def get_my_coins_list():
             for row in myfile:
                 exceptions_list.append(row.rstrip('\n'))
     else:
-        write_to_log(f'unlendable.csv did not exist, has been created for future use')
+        write_to_log(f'unlendable.csv does not exist, will be created as need be')
 
     api_name = os.environ.get("API_NAME")
     api_key = os.environ.get("API_KEY")
