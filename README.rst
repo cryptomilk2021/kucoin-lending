@@ -67,6 +67,8 @@ Going forward
 -  have one call to kucoin in the object implement \*args to pass 2 or 3
    values depending on call
 
+-  generate profit report for last 7 days?
+
 -  check which way an asset is trending, if it's going up use slightly
    higher interest rates
 
