@@ -10,5 +10,3 @@ for i in my_coin_list:
     lending_coin.lend_coin()
     del lending_coin
 
-##TODO *args call to kucoin
-##TODO only lend when process_open_orders returns an amount?
