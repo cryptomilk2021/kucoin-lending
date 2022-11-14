@@ -12,6 +12,8 @@ a given number of hours
 
 It than goes and relends these assets
 
+Ideally to be run as a cron job
+
 Features
 --------
 
@@ -64,9 +66,6 @@ Setup
 Going forward
 -------------
 
--  have one call to kucoin in the object implement \*args to pass 2 or 3
-   values depending on call
-
 -  generate profit report for last 7 days?
 
 -  check which way an asset is trending, if it's going up use slightly
@@ -74,6 +73,8 @@ Going forward
 
 Change Log
 ----------
++-------+-------------------------------------------------------------+
+| 1.0.0 | -  clean up code, first prod version                        |
 +-------+-------------------------------------------------------------+
 | 0.1.3 | -  keep orders that are already sitting at lowest rate      |
 |       |                                                             |
