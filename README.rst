@@ -73,6 +73,8 @@ Going forward
 -  check which way an asset is trending, if it's going up use slightly
    higher interest rates
 
+-  add order one level below the current lowest rate?
+
 Change Log
 ----------
 +-------+-------------------------------------------------------------+
