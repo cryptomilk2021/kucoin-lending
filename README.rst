@@ -19,8 +19,6 @@ An overview of the program https://youtu.be/nXDBVaByEZU
 Features
 --------
 
--  Implementation of REST endpoints
-
 -  Cancel loan orders that are more than certain number of hours old
 
 -  Submit lend orders, splitting them into (and up to) 3 lowest lending
@@ -34,6 +32,8 @@ Features
 -  add to 'lending precision' file, if an asset already does not exist
    in it, precision = decimal place accuracy for lend orders, ie USDT is
    1, AVAX is 0.1 etc
+
+-  Implementation of REST endpoints
 
 Setup
 -----
