@@ -10,9 +10,11 @@ This bot automates your asset lending on kucoin.com, it improves on the
 auto-lend feature by cancelling orders that have been sitting around for
 a given number of hours
 
-It than goes and relends these assets
+It than goes and re-lends these assets
 
 Ideally to be run as a cron job
+
+An overview of the program https://youtu.be/nXDBVaByEZU
 
 Features
 --------
