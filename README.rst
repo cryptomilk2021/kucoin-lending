@@ -14,6 +14,8 @@ It than goes and re-lends these assets
 
 Ideally to be run as a cron job
 
+It only deals with 7 day lending
+
 An overview of the program https://youtu.be/nXDBVaByEZU
 
 Features
