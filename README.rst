@@ -16,6 +16,8 @@ Ideally to be run as a cron job
 
 It only deals with 7 day lending
 
+All dates are DD/MM/YYYY
+
 An overview of the program https://youtu.be/nXDBVaByEZU
 
 Features
