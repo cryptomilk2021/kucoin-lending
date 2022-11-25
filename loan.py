@@ -51,6 +51,7 @@ class Loan:
         self.precision = None
         self.delete_orders_older_than_hours = delete_orders_older_than_hours
         self.get_os_vars()
+        self.only_multiples = False
         self.get_currency_precision()
 
     def get_os_vars(self):
@@ -93,6 +94,8 @@ class Loan:
 
     def lend_coin(self):
         def truncate_amt(amount, precision):
+
+
             decimal_places = str(precision)
             chopping = decimal_places.find('.')
             if chopping == -1:
@@ -100,6 +103,11 @@ class Loan:
             else:
                 decimal_places = len(decimal_places.replace('.', ' ').split()[-1])
                 amount = math.floor(float(amount) * 10 ** decimal_places) / 10 ** decimal_places
+
+            # test for multiple variation, ADA can only lend in multiples of 10
+            if self.only_multiples:
+                drop_this_much = float(amount) % float(precision)
+                amount = amount - drop_this_much
             return amount
 
         def split_amount(amt, precision):
@@ -225,7 +233,6 @@ class Loan:
             "Content-Type": "application/json"  # specifying content type or using json=data in request
         }
         response = requests.request('post', self.url + point, headers=headers, data=data_json)
-
         if response.json()['code'] == '400100':  # add coin to precision file, check if not another error
             err_msg = response.json()['msg'].split()
             if (err_msg[0] + err_msg[1]) == 'lendsize':
@@ -257,7 +264,14 @@ class Loan:
             f.close()
             # print(dict_lend)
             if self.coin in dict_lend:
+                #check if it's only multiples
                 self.precision = dict_lend[self.coin]
+                if isinstance(self.precision, str) and ('*' in self.precision):
+                    self.only_multiples = True
+                    self.precision = self.precision.replace('*', '')
+
+                else:
+                    self.precision = dict_lend[self.coin]
             else:
                 self.precision = 0.1  # will get overwritten later if wrong
                 dict_lend[self.coin] = self.precision
