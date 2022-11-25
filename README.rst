@@ -82,6 +82,13 @@ Going forward
 Change Log
 ----------
 +-------+-------------------------------------------------------------+
+| 1.1.0 | -  added amount multiple func, in the case of ADA you can   |
+|       |    lend at least 10 ADA, however it has to be multiples     |
+|       |    of 10, ie. 20, 90, 190 etc. Error msg from KC is not     |
+|       |    specific enough, therefore, one has to mark assets like  |
+|       |    these in the min_lend_amount.json file with a preceding  |
+|       |    asterix, "ADA": "*10"                                    |
++-------+-------------------------------------------------------------+
 | 1.0.0 | -  clean up code, first prod version                        |
 +-------+-------------------------------------------------------------+
 | 0.1.3 | -  keep orders that are already sitting at lowest rate      |
